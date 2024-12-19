@@ -3,7 +3,13 @@
 /local.properties
 /.idea/workspace.xml
 /.idea/misc.xml
+/.idea/compiler.xml
+/.idea/dbnavigator.xml
+/.idea/gradle.xml
+/.idea/jarRepositories.xml
 /.idea/libraries
+/.idea/modules.xml
+/.idea/vcs.xml
 .DS_Store
 /build
 /captures
