@@ -1,6 +1,5 @@
 package com.smewise.camera2.module;
 
-
 import android.graphics.Bitmap;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraCharacteristics;
@@ -27,6 +26,7 @@ import com.smewise.camera2.ui.DualCameraUI;
 import com.smewise.camera2.utils.FileSaver;
 import com.smewise.camera2.utils.MediaFunc;
 
+import java.util.Arrays;
 
 /**
  * Created by wenzhe on 16-3-8.
@@ -58,23 +58,76 @@ public class DualCameraModule extends CameraModule implements FileSaver.FileList
     @Override
     public void start() {
         String[] idList = mDeviceMgr.getCameraIdList();
-        String mainId = getSettings().getGlobalPref(CameraSettings.KEY_MAIN_CAMERA_ID, idList[0]);
+        
+        if (idList != null) {
+            for (String id : idList) {
+                CameraCharacteristics characteristics = mDeviceMgr.getCharacteristics(id);
+                
+                if (characteristics != null) {
+                    Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
+                    float[] focalLengths = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+                    Integer level = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
+                    
+                    int[] capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
+                    boolean isLogicalCamera = false;
+                    if (capabilities != null) {
+                        for (int capability : capabilities) {
+                            if (capability == CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) {
+                                isLogicalCamera = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    StringBuilder info = new StringBuilder();
+                    info.append("\nCamera ID: ").append(id)
+                        .append("\n  Facing: ").append(
+                            facing == CameraCharacteristics.LENS_FACING_FRONT ? "FRONT" :
+                            facing == CameraCharacteristics.LENS_FACING_BACK ? "BACK" : "EXTERNAL")
+                        .append("\n  Is Logical Multi-Camera: ").append(isLogicalCamera);
+                    
+                    if (focalLengths != null) {
+                        info.append("\n  Focal Lengths: ");
+                        for (float focal : focalLengths) {
+                            info.append(focal).append("mm, ");
+                        }
+                    }
+                    
+                    info.append("\n  Hardware Level: ")
+                        .append(level == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY ? "LEGACY" :
+                               level == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED ? "LIMITED" :
+                               level == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL ? "FULL" :
+                               level == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_3 ? "LEVEL_3" : "UNKNOWN");
+
+                    if (capabilities != null) {
+                        info.append("\n  Capabilities: ");
+                        for (int capability : capabilities) {
+                            info.append("\n    - ").append(getCapabilityString(capability));
+                        }
+                    }
+                    
+                    Log.e(TAG, "Camera Info IDs: " + info.toString());
+                }
+            }
+        }
+        
+        String mainId = getSettings().getGlobalPref(CameraSettings.KEY_MAIN_CAMERA_ID, idList != null && idList.length > 0 ? idList[0] : null);
         String auxId = getSettings().getGlobalPref(
-                CameraSettings.KEY_AUX_CAMERA_ID, idList[idList.length - 1]);
+                CameraSettings.KEY_AUX_CAMERA_ID, idList != null && idList.length > 1 ? idList[idList.length - 1] : null);
         mDeviceMgr.setCameraId(mainId, auxId);
         mDeviceMgr.openCamera(mainHandler);
         // when module changed , need update listener
         fileSaver.setFileListener(this);
         getBaseUI().setCameraUiEvent(mCameraUiEvent);
         addModuleView(mUI.getRootView());
-        Log.d(TAG, "start module");
+        Log.e(TAG, "start module");
     }
 
     private DeviceManager.CameraEvent mCameraEvent = new DeviceManager.CameraEvent() {
         @Override
         public void onDeviceOpened(CameraDevice device) {
             super.onDeviceOpened(device);
-            Log.d(TAG, "camera opened");
+            Log.e(TAG, "camera opened");
             mSession.applyRequest(Session.RQ_SET_DEVICE, device);
             enableState(Controller.CAMERA_STATE_OPENED);
             if (stateEnabled(Controller.CAMERA_STATE_UI_READY)) {
@@ -97,7 +150,7 @@ public class DualCameraModule extends CameraModule implements FileSaver.FileList
             if (mUI != null) {
                 mUI.resetFrameCount();
             }
-            Log.d(TAG, "camera closed");
+            Log.e(TAG, "camera closed");
         }
     };
 
@@ -154,7 +207,7 @@ public class DualCameraModule extends CameraModule implements FileSaver.FileList
         mSession.release();
         mAuxSession.release();
         mDeviceMgr.releaseCamera();
-        Log.d(TAG, "stop module");
+        Log.e(TAG, "stop module");
     }
 
     /**
@@ -193,7 +246,7 @@ public class DualCameraModule extends CameraModule implements FileSaver.FileList
 
         @Override
         public void onPreviewUiReady(SurfaceTexture mainSurface, SurfaceTexture auxSurface) {
-            Log.d(TAG, "onSurfaceTextureAvailable");
+            Log.e(TAG, "onSurfaceTextureAvailable");
             mainSurfaceTexture = mainSurface;
             auxSurfaceTexture = auxSurface;
             enableState(Controller.CAMERA_STATE_UI_READY);
@@ -206,7 +259,7 @@ public class DualCameraModule extends CameraModule implements FileSaver.FileList
         @Override
         public void onPreviewUiDestroy() {
             disableState(Controller.CAMERA_STATE_UI_READY);
-            Log.d(TAG, "onSurfaceTextureDestroyed");
+            Log.e(TAG, "onSurfaceTextureDestroyed");
         }
 
         @Override
@@ -265,6 +318,39 @@ public class DualCameraModule extends CameraModule implements FileSaver.FileList
             case R.id.thumbnail:
                 MediaFunc.goToGallery(appContext);
                 break;
+        }
+    }
+
+    private String getCapabilityString(int capability) {
+        switch (capability) {
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BACKWARD_COMPATIBLE:
+                return "BACKWARD_COMPATIBLE";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR:
+                return "MANUAL_SENSOR";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING:
+                return "MANUAL_POST_PROCESSING";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW:
+                return "RAW";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_PRIVATE_REPROCESSING:
+                return "PRIVATE_REPROCESSING";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_READ_SENSOR_SETTINGS:
+                return "READ_SENSOR_SETTINGS";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BURST_CAPTURE:
+                return "BURST_CAPTURE";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_YUV_REPROCESSING:
+                return "YUV_REPROCESSING";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT:
+                return "DEPTH_OUTPUT";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_CONSTRAINED_HIGH_SPEED_VIDEO:
+                return "CONSTRAINED_HIGH_SPEED_VIDEO";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MOTION_TRACKING:
+                return "MOTION_TRACKING";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA:
+                return "LOGICAL_MULTI_CAMERA";
+            case CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MONOCHROME:
+                return "MONOCHROME";
+            default:
+                return "CAPABILITY_" + capability;
         }
     }
 }
